@@ -3,29 +3,25 @@ package db
 import (
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gtime"
+	"my-apijson/apijson/config"
 	"strings"
 )
-
-var RowKeyMap = map[string]string{
-	"user": "userId",
-	"todo": "id",
-} // 从数据库中读入
 
 var AccessMap = map[string]Access{}
 
 type Access struct {
-	Debug  int8
-	Name   string
-	Alias  string
-	Get    []string
-	Head   []string
-	Gets   []string
-	Heads  []string
-	Post   []string
-	Put    []string
-	Delete []string
-	Date   *gtime.Time
-	Detail string
+	Debug     int8
+	Name      string
+	Alias     string
+	Get       []string
+	Head      []string
+	Gets      []string
+	Heads     []string
+	Post      []string
+	Put       []string
+	Delete    []string
+	CreatedAt *gtime.Time
+	Detail    string
 
 	// ext
 
@@ -42,7 +38,7 @@ type Request struct {
 	// https://github.com/Tencent/APIJSON/blob/master/APIJSONORM/src/main/java/apijson/orm/Operation.java
 	Structure g.Map
 	Detail    string
-	Date      *gtime.Time
+	CreatedAt *gtime.Time
 }
 
 func Init() {
@@ -54,10 +50,14 @@ func getAccessMap() {
 	accessMap := make(map[string]Access)
 
 	var accessList []Access
-	g.DB().Model("Access").Scan(&accessList)
+	g.DB().Model(config.TableAccess).Scan(&accessList)
 
 	for _, access := range accessList {
-		accessMap[access.Name] = access
+		name := access.Alias
+		if name == "" {
+			name = access.Name
+		}
+		accessMap[name] = access
 	}
 
 	AccessMap = accessMap
@@ -67,7 +67,7 @@ func getRequestMap() {
 	requestMap := make(map[string]Request)
 
 	var requestList []Request
-	g.DB().Model("Request").Scan(&requestList)
+	g.DB().Model(config.TableRequest).Scan(&requestList)
 
 	for _, item := range requestList {
 

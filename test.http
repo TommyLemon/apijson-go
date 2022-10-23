@@ -98,3 +98,22 @@ Content-Type: application/json
     }
   }
 }
+
+
+### 分页
+POST http://127.0.0.1:8088/get
+Content-Type: application/json
+
+{
+  "[]": {
+    "todo": {
+      "userId@": "todo/userId",
+      "@column": "id,userId"
+    },
+    "user": {
+      "id@": "/todo/userId",
+      "@column": "id"
+    }
+  }
+}
+

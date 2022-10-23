@@ -24,7 +24,6 @@ type SqlExecutor struct {
 }
 
 func NewSqlExecutor(ctx context.Context, table string, isList bool) *SqlExecutor {
-	// table = gstr.CaseSnake(table)
 
 	m := g.DB().Model(table)
 
@@ -48,8 +47,6 @@ func (e *SqlExecutor) ParseCondition(conditions g.MapStrAny) error {
 		if strings.HasPrefix(k, "//") { // for debug, 如果字段//开头, 则忽略, 用于json"注释"
 			continue
 		}
-
-		// k = gstr.CaseSnake(k)
 
 		switch {
 		case k == "page":
@@ -152,25 +149,42 @@ func (e *SqlExecutor) parseCtrlCondition(k string, condition any) error {
 }
 
 func (e *SqlExecutor) Fetch() (any, error) {
-
+	m := e.m.Clone()
 	if e.Columns != nil {
-		e.m = e.m.Fields(e.Columns)
+		m = m.Fields(e.Columns)
 	}
 
 	if e.Order != "" {
-		e.m = e.m.Order(e.Order)
+		m = m.Order(e.Order)
 	}
 
-	e.m = e.m.Where(e.builder)
+	m = m.Where(e.builder)
 
 	if e.Group != "" {
-		e.m = e.m.Group(e.Group)
+		m = m.Group(e.Group)
 	}
 
 	if e.isList {
-		e.m = e.m.Page(e.Page, e.Count)
-		return e.m.All()
+		m = m.Page(e.Page, e.Count)
+		return m.All()
 	}
 
-	return e.m.One()
+	return m.One()
+}
+
+func (e *SqlExecutor) Total() (int, error) {
+
+	m := e.m.Clone()
+
+	m = m.Where(e.builder)
+
+	if e.Group != "" {
+		m = m.Group(e.Group)
+	}
+
+	if e.isList {
+		return m.Count()
+	}
+
+	return 0, nil
 }

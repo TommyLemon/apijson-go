@@ -15,7 +15,10 @@
 - [x] Request表的tag校验
   - [x] MUST
   - [x] REFUSE
+- [ ] 分页返回total
 - [ ] 可用的权限方案
+- [ ] 远程函数
+
 
 ## 查询实现
 1. 根据json构造节点树, 并检查节点结构(不符合直接返回)
@@ -43,6 +46,7 @@
 # 感谢
 - [GoFrame](https://gitee.com/johng/gf)
 - [APIJSON](https://gitee.com/Tencent/APIJSON)
+- [tiangao/apijson-go](https://gitee.com/tiangao/apijson-go)
 
 # 参考链接
 1. [详细的说明文档.md](https://github.com/Tencent/APIJSON/blob/master/%E8%AF%A6%E7%BB%86%E7%9A%84%E8%AF%B4%E6%98%8E%E6%96%87%E6%A1%A3.md)

@@ -75,13 +75,21 @@ func (q *Query) fetch() {
 
 	util.Reverse(&fetchNodeQueueWithRef)
 
+	//for _, node := range fetchNodeQueueWithRef {
+	//	fmt.Printf("%s\n", node.Path)
+	//	for k, refPath := range node.refKeyMap {
+	//		fmt.Printf("%s -> %s\n", k, refPath)
+	//	}
+	//	fmt.Println("---------------------")
+	//}
+
 	for _, node := range append(fetchNodeQueue) {
-		fmt.Printf(" [%s] > ", node.Path)
+		fmt.Printf(" 【%s】 > ", node.Path)
 	}
 	fmt.Println("")
 
 	for _, node := range append(fetchNodeQueueWithRef) {
-		fmt.Printf(" [%s] > ", node.Path)
+		fmt.Printf(" 【%s】 > ", node.Path)
 	}
 	fmt.Println("")
 
@@ -107,11 +115,13 @@ func (q *Query) Result() (g.Map, error) {
 	}
 
 	g.Log().Debugf(q.ctx, "【query】 ============ [parse]")
+
 	q.rootNode.parse()
 
 	p(q.rootNode, 0)
 
 	g.Log().Debugf(q.ctx, "【query】 ============ [fetch]")
+
 	q.fetch()
 
 	resultMap, err := q.rootNode.Result()

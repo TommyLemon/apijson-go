@@ -7,7 +7,7 @@ import (
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/util/gconv"
-	"my-apijson/apijson/consts"
+	"my-apijson/apijson/config"
 	"my-apijson/apijson/db"
 	"my-apijson/apijson/util"
 	"path/filepath"
@@ -35,7 +35,12 @@ type Node struct {
 	req         g.MapStrAny
 	sqlExecutor *db.SqlExecutor
 
-	IsList  bool
+	IsList bool
+
+	isSimpleVal bool   // 是否简单值(非对象、数组等)
+	isRefNode   bool   // 值是否为引用
+	refFor      string // 引用的值
+
 	startAt time.Time
 	endAt   time.Time
 
@@ -51,61 +56,84 @@ type Node struct {
 
 	isPrimaryTable bool // 是否主查询表
 
+	Total int // 数据总条数
+
 	Finish bool // 执行完毕
 
 	isAccess bool // 是否可访问
 }
 
-func newNode(ctx *Query, key string, path string, nodeReq g.Map) *Node {
+func newNode(ctx *Query, key string, path string, nodeReq any) *Node {
 
 	if len(strings.Split(path, "/")) > MaxTreeDeep {
-		panic(gerror.Newf("width(%s) > 5", path))
+		panic(gerror.Newf("deep(%s) > 5", path))
 	}
 
 	g.Log().Debugf(ctx.ctx, "【node】(%s) <new> ", path)
 
-	return &Node{
+	node := &Node{
 		ctx:          ctx.ctx,
 		queryContext: ctx,
 		Key:          key,
 		Path:         path,
-		req:          nodeReq,
 		startAt:      time.Now(),
 		Finish:       false,
 		isAccess:     true,
 	}
+
+	if req, ok := nodeReq.(g.Map); ok {
+		node.req = req
+	} else {
+		if strings.HasSuffix(key, "@") {
+			node.isRefNode = true
+			node.isSimpleVal = true
+			node.refFor = nodeReq.(string)
+		}
+	}
+
+	return node
 }
 
 func (n *Node) buildChild() error {
 
-	if len(n.req) > MaxTreeWidth {
-		path := n.Path
-		if path == "" {
-			path = "root"
-		}
-		return gerror.Newf("width(%s) > 5", path)
+	//if len(n.req) > MaxTreeWidth {
+	//	path := n.Path
+	//	if path == "" {
+	//		path = "root"
+	//	}
+	//	return gerror.Newf("width(%s) > 5", path)
+	//}
+
+	if n.isSimpleVal {
+		return nil
 	}
 
 	n.children = make(map[string]*Node)
 
 	for k, v := range n.req {
-		nodeReq, ok := v.(g.Map)
-		if ok {
-			path := n.Path
-			if path != "" { // 根节点时不带/
-				path += "/"
-			}
-			path += k
-			node := newNode(n.queryContext, k, path, nodeReq)
 
-			err := node.buildChild()
-			if err != nil {
-				return err
+		// todo 什么时候结束节点
+		// 暂只支持两层深度，需要分析那些是结构数据， 哪些是最终查询数据库 (不限制数据库表名大写)
+		if _, ok := v.(g.Map); !ok {
+			if !strings.HasSuffix(k, "@") || n.Path != "" {
+				continue
 			}
-
-			n.children[k] = node
-			n.queryContext.pathNodes[path] = node
 		}
+
+		path := n.Path
+		if path != "" { // 根节点时不带/
+			path += "/"
+		}
+		path += k
+		node := newNode(n.queryContext, k, path, v)
+
+		err := node.buildChild()
+		if err != nil {
+			return err
+		}
+
+		n.children[k] = node
+		n.queryContext.pathNodes[path] = node
 	}
 
 	return nil
@@ -115,6 +143,30 @@ func (n *Node) parse() {
 
 	g.Log().Debugf(n.ctx, "【node】(%s) <parse> ", n.Path)
 
+	if n.isSimpleVal {
+		if n.isRefNode {
+			n.refKeyMap = g.Map{
+				n.Key: n.refFor,
+			}
+			refPath := gconv.String(n.refFor)
+			refPathCol := filepath.Base(refPath)                  // "id@":"[]/T-odo/userId"  ->  userId
+			refPath = refPath[0 : len(refPath)-len(refPathCol)-1] // "id@":"[]/T-odo/userId"  ->  []/T-odo   不加横杠会自动变成goland的to_do 项
+
+			if strings.HasPrefix(refPath, "/") { // 有点非正常绝对路径的写法, 这里/开头是相对同级
+				refPath = filepath.Dir(n.Path) + refPath
+			}
+
+			n.refNodeMap = map[string]RefNode{
+				n.Key: {
+					column: refPathCol,
+					node:   n.queryContext.pathNodes[refPath],
+				},
+			}
+
+		}
+		return
+	}
+
 	table, isList := parseTableKey(n.Key, n.Path)
 
 	n.IsList = isList
@@ -123,10 +175,11 @@ func (n *Node) parse() {
 
 		var accessRoles []string
 
-		if n.queryContext.AccessVerify {
-			// 判断用户是否存在允许角色
-			userRoles := n.ctx.Value(consts.RoleKey).([]string)
-			if access, exists := db.AccessMap[table]; exists {
+		if access, exists := db.AccessMap[table]; exists {
+			if n.queryContext.AccessVerify {
+				// 判断用户是否存在允许角色
+				_userRoles := n.ctx.Value(config.RoleKey)
+				userRoles := _userRoles.([]string)
 				accessRoles = access.Get
 				canAccess := false
 				for _, r := range userRoles {
@@ -139,10 +192,11 @@ func (n *Node) parse() {
 				if !canAccess {
 					return
 				}
-
-			} else {
-				panic(gerror.Newf("table not exists : %s", table))
 			}
+			table = access.Name
+
+		} else {
+			panic(gerror.Newf("table not exists : %s", table))
 		}
 
 		refKeyMap, conditionMap := parseRefKey(n.req)
@@ -294,10 +348,27 @@ func (n *Node) fetch() {
 		g.Log().Debug(n.ctx, "[dep]", n.Path, " -> ", n.refKeyMap)
 		for k, refNode := range n.refNodeMap {
 
+			if refNode.column == "total" && strings.HasSuffix(n.refFor, "[]/total") {
+				ret, err := refNode.node.Result()
+				if err != nil {
+					return
+				}
+
+				switch ret.(type) {
+				case []g.Map:
+					n.ret = len(ret.([]g.Map)) // 写死了一些地方, 只为了先实现total引用
+				case gdb.Result:
+					n.ret = len(ret.(gdb.Result)) // 写死了一些地方, 只为了先实现total引用
+				}
+
+				continue
+			}
+
 			ret, err := refNode.node.Result()
 			if err != nil {
 				g.Log().Error(n.ctx, "", err)
 				n.err = err
+				return
 			}
 
 			if refNode.node.IsList {
@@ -355,6 +426,7 @@ func (n *Node) fetch() {
 					depRetList = append(depRetList, record.Map())
 				}
 				n.depRetList = depRetList
+				n.ret = retList // 后续可分析需要此字段的情况 (自身依赖且被依赖)
 			} else {
 				record := ret.(gdb.Record)
 				n.ret = record.Map()
@@ -367,6 +439,14 @@ func (n *Node) fetch() {
 
 	}
 
+	if n.IsList && n.isPrimaryTable && n.sqlExecutor != nil {
+		var err error
+		n.Total, err = n.sqlExecutor.Total()
+		if err != nil {
+			panic(err)
+		}
+	}
+
 	n.Finish = true
 	n.endAt = time.Now()
 
@@ -377,6 +457,24 @@ func (n *Node) fetch() {
 func (n *Node) Result() (any, error) {
 
 	if n.sqlExecutor != nil { // children == 0
+
+		if n.IsList {
+			if n.ret.(gdb.Result) == nil {
+				return []string{}, n.err
+			} else {
+				return n.ret, n.err
+			}
+		} else {
+			if n.ret.(gdb.Record) == nil {
+				return nil, n.err
+			} else {
+				return n.ret, n.err
+			}
+		}
+
+	}
+
+	if n.isSimpleVal {
 		return n.ret, n.err
 	}
 
@@ -427,6 +525,9 @@ func (n *Node) Result() (any, error) {
 		retMap := g.Map{}
 		for k, node := range n.children {
 			var err error
+			if strings.HasSuffix(k, "@") {
+				k = k[0 : len(k)-1]
+			}
 			retMap[k], err = node.Result()
 			if err != nil {
 				panic(err)
@@ -444,15 +545,17 @@ func parseTableKey(k string, p string) (tableName string, isList bool) {
 		return "", false
 	}
 
+	tableName = k
+
 	if strings.HasSuffix(k, "[]") {
-		return k[0 : len(k)-2], true
+		tableName = k[0 : len(k)-2]
+		isList = true
+	} else if strings.Contains(p, "[]") {
+		tableName = k
+		isList = true
 	}
 
-	if strings.Contains(p, "[]") {
-		return k, true
-	}
-
-	return k, false
+	return tableName, isList
 }
 func parseRefKey(reqMap g.Map) (g.Map, g.Map) {
 	depMap := g.Map{}

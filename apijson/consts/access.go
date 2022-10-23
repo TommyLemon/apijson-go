@@ -10,7 +10,3 @@ const (
 
 	DEPT = "DEPT" // 机构管理员
 )
-
-const (
-	RoleKey = "ajg.role"
-)

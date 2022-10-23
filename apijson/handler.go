@@ -3,6 +3,7 @@ package apijson
 import (
 	"context"
 	"github.com/gogf/gf/v2/frame/g"
+	"my-apijson/apijson/config"
 	"my-apijson/apijson/db"
 	"my-apijson/apijson/query"
 )
@@ -10,14 +11,15 @@ import (
 func Get(ctx context.Context, req g.Map) (res g.Map, err error) {
 
 	q := query.New(ctx, req)
-	q.AccessVerify = AccessVerify
-	q.AccessCondition = AccessCondition
+	q.AccessVerify = config.AccessVerify
+	q.AccessCondition = config.AccessCondition
 	return q.Result()
 
 }
 
 func Post(ctx context.Context, req g.Map) (res g.Map, err error) {
-	req, err = checkByRequest(req, "POST")
+
+	req, err = checkByRequest(ctx, req, "POST")
 	if err != nil {
 		return nil, err
 	}
@@ -26,6 +28,7 @@ func Post(ctx context.Context, req g.Map) (res g.Map, err error) {
 
 	for k, v := range req {
 		if val, ok := v.(map[string]any); ok {
+
 			id, count, err := db.Insert(ctx, k, val)
 			if err != nil {
 				ret[k] = g.Map{
@@ -50,7 +53,7 @@ func Head(ctx context.Context, req g.Map) (res g.Map, err error) {
 
 func Put(ctx context.Context, req g.Map) (res g.Map, err error) {
 
-	req, err = checkByRequest(req, "PUT")
+	req, err = checkByRequest(ctx, req, "PUT")
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +82,7 @@ func Put(ctx context.Context, req g.Map) (res g.Map, err error) {
 
 func Delete(ctx context.Context, req g.Map) (res g.Map, err error) {
 
-	req, err = checkByRequest(req, "DELETE")
+	req, err = checkByRequest(ctx, req, "DELETE")
 	if err != nil {
 		return nil, err
 	}
