@@ -26,6 +26,10 @@ type Access struct {
 	Delete []string
 	Date   *gtime.Time
 	Detail string
+
+	// ext
+
+	RowKey string
 }
 
 var RequestMap = map[string]Request{}

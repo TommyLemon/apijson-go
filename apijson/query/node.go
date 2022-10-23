@@ -7,21 +7,12 @@ import (
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/util/gconv"
+	"my-apijson/apijson/consts"
 	"my-apijson/apijson/db"
+	"my-apijson/apijson/util"
 	"path/filepath"
 	"strings"
 	"time"
-)
-
-const (
-	UNKNOWN = "UNKNOWN" // 未登录用户
-	LOGIN   = "LOGIN"   // 登录用户 (用于需要登录才能查看的公开资源)
-	OWNER   = "OWNER"   // 用户 自己创建的数据
-	ADMIN   = "ADMIN"   // 管理员
-
-	// 以下非apijson官方的
-
-	DEPT = "DEPT" // 机构管理员
 )
 
 type RefNode struct {
@@ -130,23 +121,29 @@ func (n *Node) parse() {
 
 	if table != "" {
 
-		// role := n.ctx.Value("ajg.role").([]string)
-		//
-		// access := db.AccessMap[table]
-		//
-		// canAccess := false
-		// for _, r := range role {
-		// 	if util.Contains(access.Get, r) {
-		// 		canAccess = true
-		// 		break
-		// 	}
-		// }
-		// g.Log().Debug(n.ctx, "userRole:", role, "accessRole", access.Get, "can?:", canAccess)
-		// if !canAccess {
-		//
-		// 	g.Log().Debug(n.ctx, n.Path, "userRole:", role, "accessRole", access.Get, "can?:", canAccess)
-		// 	return
-		// }
+		var accessRoles []string
+
+		if n.queryContext.AccessVerify {
+			// 判断用户是否存在允许角色
+			userRoles := n.ctx.Value(consts.RoleKey).([]string)
+			if access, exists := db.AccessMap[table]; exists {
+				accessRoles = access.Get
+				canAccess := false
+				for _, r := range userRoles {
+					if util.Contains(access.Get, r) {
+						canAccess = true
+						break
+					}
+				}
+				g.Log().Debug(n.ctx, "userRole:", userRoles, "accessRole", access.Get, "can?:", canAccess)
+				if !canAccess {
+					return
+				}
+
+			} else {
+				panic(gerror.Newf("table not exists : %s", table))
+			}
+		}
 
 		refKeyMap, conditionMap := parseRefKey(n.req)
 
@@ -159,23 +156,22 @@ func (n *Node) parse() {
 			return
 		}
 
-		// access 限定条件
-		// if n.queryContext.AccessCondition != nil {
-		// 	where, err := n.queryContext.AccessCondition(n.ctx, table, n.req, access.Get)
-		// 	if err != nil {
-		// 		n.err = err
-		// 		return
-		// 	}
-		// 	if where != nil {
-		// 		err = n.sqlExecutor.ParseCondition(where)
-		//
-		// 		if err != nil {
-		// 			n.err = err
-		// 			return
-		// 		}
-		// 	}
-		//
-		// }
+		//  access 限定条件
+		if n.queryContext.AccessCondition != nil {
+			where, err := n.queryContext.AccessCondition(n.ctx, table, n.req, accessRoles)
+			if err != nil {
+				n.err = err
+				return
+			}
+			if where != nil {
+				err = n.sqlExecutor.ParseCondition(where)
+				if err != nil {
+					n.err = err
+					return
+				}
+			}
+
+		}
 
 		if len(refKeyMap) > 0 {
 			n.refKeyMap = refKeyMap
@@ -313,6 +309,11 @@ func (n *Node) fetch() {
 					set.Add(gconv.String(value))
 				}
 
+				if set.Size() == 0 { // 未查询到主表, 故当前不再查询
+					n.sqlExecutor = nil // 置空, 后续不在查找, 暂为统一后续流程
+					break
+				}
+
 				err := n.sqlExecutor.ParseCondition(g.Map{
 					k + "{}": set.Slice(), // todo @ 与 {}&等的结合 id{}@的处理
 				})
@@ -325,7 +326,13 @@ func (n *Node) fetch() {
 			} else {
 				refConditionMap := g.Map{}
 				item := ret.(gdb.Record)
-				refConditionMap[k] = item.Map()[refNode.column]
+
+				refVal := item.Map()[refNode.column]
+				if refVal == nil { // 未查询到主表, 故当前不再查询
+					n.sqlExecutor = nil
+					break
+				}
+				refConditionMap[k] = refVal
 				err := n.sqlExecutor.ParseCondition(refConditionMap)
 				if err != nil {
 					n.err = err

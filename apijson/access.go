@@ -1,11 +1,5 @@
 package apijson
 
-// getRolesByTable
-// 1. 基本角色 UNKNOW, OWNER, ADMIN
-func getRolesByTable() {
-
-}
-
 // 1. 读取access 中对于表的 get操作的角色列表
 
 // 资源 ->

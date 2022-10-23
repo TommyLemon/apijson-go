@@ -5,40 +5,13 @@ import (
 	"github.com/gogf/gf/v2/frame/g"
 	"my-apijson/apijson/db"
 	"my-apijson/apijson/query"
-	"my-apijson/apijson/util"
 )
 
 func Get(ctx context.Context, req g.Map) (res g.Map, err error) {
 
 	q := query.New(ctx, req)
-	q.AccessCondition = func(ctx context.Context, table string, req g.Map, needRole []string) (g.Map, error) {
-
-		userRole := ctx.Value("ajg.role").([]string)
-
-		// 可改成switch方式
-
-		if util.Contains(needRole, query.UNKNOWN) {
-			return nil, nil
-		}
-
-		if util.Contains(needRole, query.LOGIN) && util.Contains(userRole, query.LOGIN) { // 登录后公开资源
-			return nil, nil
-		}
-
-		if util.Contains(needRole, query.OWNER) && util.Contains(userRole, query.OWNER) {
-			if table == "User" {
-				return g.Map{
-					"id": ctx.Value("ajg.userId"),
-				}, nil
-			} else {
-				return g.Map{
-					"userId": ctx.Value("ajg.userId"),
-				}, nil
-			}
-		}
-
-		return nil, nil
-	}
+	q.AccessVerify = AccessVerify
+	q.AccessCondition = AccessCondition
 	return q.Result()
 
 }
